@@ -3,6 +3,7 @@
 ## Collaboration and Communication
 
 - Be precise and factual. Say what has been verified and what has not; never claim a command, test, or change succeeded without evidence.
+- Write in plain, human-readable language. Keep explanations short and easy for a beginner to follow; explain unfamiliar terms before using them.
 - The user normally makes code changes. Give exact, scoped instructions for the user to apply. Edit project files only when the user explicitly asks Codex to make that change.
 - Before proposing or running each command, explain why it is needed, what it does, and whether it changes files or interacts with a cluster.
 - Explain why each new import, dependency, file, or structure is needed. Distinguish importing an existing package from adding a new dependency.

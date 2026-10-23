@@ -27,8 +27,10 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	scanv1 "github.com/Stilyan-Kirov/my-operator/api/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 // ImageScanReconciler reconciles a ImageScan object
@@ -42,6 +44,7 @@ type ImageScanReconciler struct {
 // +kubebuilder:rbac:groups=scan.my.domain,resources=imagescans/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=list;watch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=list;watch
+// +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -65,117 +68,211 @@ func (r *ImageScanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	// Skip initialization if this ImageScan already has a saved status.
-	if scan.Status.Phase != "" {
-		return ctrl.Result{}, nil
-	}
+	// Discover images and save their initial status only once.
+	if scan.Status.Phase == "" {
+		//return ctrl.Result{}, nil
 
-	namespaceSelector, err := metav1.LabelSelectorAsSelector(&scan.Spec.NamespaceSelector)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf(
-			"invalid namespace selector for ImageScan %q: %w", scan.Name, err,
-		)
-	}
-
-	namespaces := &corev1.NamespaceList{}
-
-	// Define the filter for Namespace labels.
-	namespaceFilter := client.MatchingLabelsSelector{Selector: namespaceSelector}
-
-	// Read matching Namespaces into namespaces.Items.
-	err = r.List(ctx, namespaces, namespaceFilter)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf(
-			"list Namespaces for ImageScan %q: %w", scan.Name, err,
-		)
-	}
-	// Convert the Pod selector into a filter usable by List.
-	podSelector, err := metav1.LabelSelectorAsSelector(&scan.Spec.PodSelector)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("invalid pod selector for ImageScan %q: %w", scan.Name, err)
-	}
-
-	// Use the same label filter in every selected Namespace.
-	podFilter := client.MatchingLabelsSelector{Selector: podSelector}
-
-	// Keep one entry per image across all selected Namespaces and Pods.
-	images := make(map[string]bool)
-	// Visit every Namespace selected earlier.
-	for _, namespace := range namespaces.Items {
-		pods := &corev1.PodList{}
-
-		// Restrict this request to the current Namespace.
-		namespaceScope := client.InNamespace(namespace.Name)
-
-		// Read Pods matching both the Namespace and the Pod label filter.
-		err = r.List(ctx, pods, namespaceScope, podFilter)
+		namespaceSelector, err := metav1.LabelSelectorAsSelector(&scan.Spec.NamespaceSelector)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf(
-				"list Pods in Namespace %q: %w", namespace.Name, err,
+				"invalid namespace selector for ImageScan %q: %w", scan.Name, err,
 			)
 		}
-		// Collect images from every matching Pod.
-		for _, pod := range pods.Items {
-			for _, container := range pod.Spec.Containers {
-				images[container.Image] = true
-			}
 
-			/* KEEP THIS FOR LATER
-			for _, container := range pod.Spec.InitContainers {
-				images[container.Image] = true
-			}
+		namespaces := &corev1.NamespaceList{}
 
-			for _, container := range pod.Spec.EphemeralContainers {
-				images[container.Image] = true
-			}
-			*/
+		// Define the filter for Namespace labels.
+		namespaceFilter := client.MatchingLabelsSelector{Selector: namespaceSelector}
+
+		// Read matching Namespaces into namespaces.Items.
+		err = r.List(ctx, namespaces, namespaceFilter)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf(
+				"list Namespaces for ImageScan %q: %w", scan.Name, err,
+			)
 		}
-	}
-
-	// Start with an empty list of scan records.
-	scan.Status.Scans = []scanv1.ImageScanResult{}
-
-	// Number the images within this ImageScan.
-	scanNumber := 1
-
-	// Each key in the map is one unique image reference.
-	for image := range images {
-		// Prepare the status record for this image.
-		result := scanv1.ImageScanResult{
-			ID:    fmt.Sprintf("%s-%d", scan.UID, scanNumber),
-			Image: image,
-			Phase: scanv1.ScanPhasePending,
+		// Convert the Pod selector into a filter usable by List.
+		podSelector, err := metav1.LabelSelectorAsSelector(&scan.Spec.PodSelector)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("invalid pod selector for ImageScan %q: %w", scan.Name, err)
 		}
 
-		// Add the record to the list.
-		scan.Status.Scans = append(scan.Status.Scans, result)
+		// Use the same label filter in every selected Namespace.
+		podFilter := client.MatchingLabelsSelector{Selector: podSelector}
 
-		// Use the next number for the next image.
-		scanNumber++
-	}
-	// Mark the overall ImageScan as waiting for processing.
-	scan.Status.Phase = scanv1.ScanPhasePending
+		// Keep one entry per image across all selected Namespaces and Pods.
+		images := make(map[string]bool)
+		// Visit every Namespace selected earlier.
+		for _, namespace := range namespaces.Items {
+			pods := &corev1.PodList{}
 
-	// Save the status through the Kubernetes status subresource.
-	err = r.Status().Update(ctx, scan)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf(
-			"update status for ImageScan %q: %w", scan.Name, err,
+			// Restrict this request to the current Namespace.
+			namespaceScope := client.InNamespace(namespace.Name)
+
+			// Read Pods matching both the Namespace and the Pod label filter.
+			err = r.List(ctx, pods, namespaceScope, podFilter)
+			if err != nil {
+				return ctrl.Result{}, fmt.Errorf(
+					"list Pods in Namespace %q: %w", namespace.Name, err,
+				)
+			}
+			// Collect images from every matching Pod.
+			for _, pod := range pods.Items {
+				for _, container := range pod.Spec.Containers {
+					images[container.Image] = true
+				}
+
+				/* KEEP THIS FOR LATER
+				for _, container := range pod.Spec.InitContainers {
+					images[container.Image] = true
+				}
+
+				for _, container := range pod.Spec.EphemeralContainers {
+					images[container.Image] = true
+				}
+				*/
+			}
+		}
+
+		// Start with an empty list of scan records.
+		scan.Status.Scans = []scanv1.ImageScanResult{}
+
+		// Number the images within this ImageScan.
+		scanNumber := 1
+
+		// Each key in the map is one unique image reference.
+		for image := range images {
+			// Prepare the status record for this image.
+			result := scanv1.ImageScanResult{
+				ID:    fmt.Sprintf("%s-%d", scan.UID, scanNumber),
+				Image: image,
+				Phase: scanv1.ScanPhasePending,
+			}
+
+			// Add the record to the list.
+			scan.Status.Scans = append(scan.Status.Scans, result)
+
+			// Use the next number for the next image.
+			scanNumber++
+		}
+		// Mark the overall ImageScan as waiting for processing.
+		scan.Status.Phase = scanv1.ScanPhasePending
+
+		// Save the status through the Kubernetes status subresource.
+		err = r.Status().Update(ctx, scan)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf(
+				"update status for ImageScan %q: %w", scan.Name, err,
+			)
+		}
+
+		logf.FromContext(ctx).Info(
+			"Selected images for ImageScan",
+			"name", scan.Name,
+			"count", len(images),
 		)
 	}
-
-	logf.FromContext(ctx).Info(
-		"Selected images for ImageScan",
-		"name", scan.Name,
-		"count", len(images),
-	)
+	if err := r.reconcileJobs(ctx, scan); err != nil {
+		return ctrl.Result{}, err
+	}
 	return ctrl.Result{}, nil
 
+}
+
+func (r *ImageScanReconciler) reconcileJobs(ctx context.Context, scan *scanv1.ImageScan) error {
+	//for _, result := range scan.Status.Scans {
+	//	if result.Phase != scanv1.ScanPhasePending {
+	//		continue
+	//	}
+	statusChanged := false
+	for i := range scan.Status.Scans {
+		result := &scan.Status.Scans[i]
+		if result.Phase == scanv1.ScanPhaseCompleted || result.Phase == scanv1.ScanPhaseFailed {
+			continue
+		}
+
+		jobName := "imagescan-" + result.ID
+		job := &batchv1.Job{}
+
+		err := r.Get(ctx, client.ObjectKey{Name: jobName, Namespace: "stilyan-kirov-system"}, job)
+		if err == nil {
+			for _, condition := range job.Status.Conditions {
+				if condition.Type == batchv1.JobComplete && condition.Status == corev1.ConditionTrue {
+					result.Phase = scanv1.ScanPhaseCompleted
+					statusChanged = true
+					break
+				}
+			}
+			continue
+		}
+		if !apierrors.IsNotFound(err) {
+			return fmt.Errorf("get Job %q: %w", jobName, err)
+		}
+
+		// Тук ще създадем липсващия Job в следващата стъпка.
+		newJob := jobForResult(*result)
+		err = controllerutil.SetControllerReference(scan, newJob, r.Scheme)
+		if err != nil {
+			return fmt.Errorf("set ImageScan owner on Job %q: %w", newJob.Name, err)
+		}
+		err = r.Create(ctx, newJob)
+
+		if err != nil {
+			return fmt.Errorf("create Job %q: %w", newJob.Name, err)
+		}
+	}
+	if statusChanged {
+		if err := r.Status().Update(ctx, scan); err != nil {
+			return fmt.Errorf("update status for ImageScan %q: %w", scan.Name, err)
+		}
+	}
+	return nil
+}
+
+func jobForResult(result scanv1.ImageScanResult) *batchv1.Job {
+	return &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "imagescan-" + result.ID,
+			Namespace: "stilyan-kirov-system",
+		},
+		Spec: batchv1.JobSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					RestartPolicy: corev1.RestartPolicyNever,
+					Containers: []corev1.Container{{
+						Name:  "trivy",
+						Image: "aquasec/trivy:0.76.1",
+						//Args:  []string{"image", "--format", "json", result.Image},
+						Args: []string{
+							"image",
+							"--format", "json",
+							"--output", "/reports/" + result.ID + ".json",
+							result.Image,
+						},
+						VolumeMounts: []corev1.VolumeMount{{
+							Name:      "reports",
+							MountPath: "/reports",
+						}},
+					}}, // край на Containers
+					Volumes: []corev1.Volume{{
+						Name: "reports",
+						VolumeSource: corev1.VolumeSource{
+							PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+								ClaimName: "imagescan-results",
+							},
+						},
+					}},
+				}, // край на PodSpec
+			},
+		},
+	}
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ImageScanReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&scanv1.ImageScan{}).
+		Owns(&batchv1.Job{}).
 		Named("imagescan").
 		Complete(r)
 }

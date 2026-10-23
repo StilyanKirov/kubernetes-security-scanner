@@ -64,6 +64,11 @@ func (r *ImageScanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, fmt.Errorf("get ImageScan %q: %w", req.Name, err)
 	}
 
+	// Skip initialization if this ImageScan already has a saved status.
+	if scan.Status.Phase != "" {
+		return ctrl.Result{}, nil
+	}
+
 	namespaceSelector, err := metav1.LabelSelectorAsSelector(&scan.Spec.NamespaceSelector)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf(
@@ -124,6 +129,38 @@ func (r *ImageScanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			}
 			*/
 		}
+	}
+
+	// Start with an empty list of scan records.
+	scan.Status.Scans = []scanv1.ImageScanResult{}
+
+	// Number the images within this ImageScan.
+	scanNumber := 1
+
+	// Each key in the map is one unique image reference.
+	for image := range images {
+		// Prepare the status record for this image.
+		result := scanv1.ImageScanResult{
+			ID:    fmt.Sprintf("%s-%d", scan.UID, scanNumber),
+			Image: image,
+			Phase: scanv1.ScanPhasePending,
+		}
+
+		// Add the record to the list.
+		scan.Status.Scans = append(scan.Status.Scans, result)
+
+		// Use the next number for the next image.
+		scanNumber++
+	}
+	// Mark the overall ImageScan as waiting for processing.
+	scan.Status.Phase = scanv1.ScanPhasePending
+
+	// Save the status through the Kubernetes status subresource.
+	err = r.Status().Update(ctx, scan)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf(
+			"update status for ImageScan %q: %w", scan.Name, err,
+		)
 	}
 
 	logf.FromContext(ctx).Info(

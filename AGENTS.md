@@ -1,5 +1,16 @@
 # stilyan-kirov - AI Agent Guide
 
+## Collaboration and Communication
+
+- Be precise and factual. Say what has been verified and what has not; never claim a command, test, or change succeeded without evidence.
+- The user normally makes code changes. Give exact, scoped instructions for the user to apply. Edit project files only when the user explicitly asks Codex to make that change.
+- Before proposing or running each command, explain why it is needed, what it does, and whether it changes files or interacts with a cluster.
+- Explain why each new import, dependency, file, or structure is needed. Distinguish importing an existing package from adding a new dependency.
+- During guided implementation, present one function or small self-contained change at a time. Answer questions about that step and wait for the user to confirm completion and understanding before moving to the next.
+- Keep changes within the requested scope. Propose optional improvements separately instead of applying them without a request.
+- Keep the logic simple. Prefer the simplest implementation that meets the assignment requirements; avoid unnecessary abstractions, dependencies, features, and infrastructure.
+- Prioritize learning the basics. The user must understand and be able to explain every addition. Explain why each addition is necessary before proposing it; extra complexity beyond the assignment is a disadvantage for the user.
+
 ## Project Structure
 
 **Single-group layout (default):**

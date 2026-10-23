@@ -18,13 +18,17 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	scanv1 "github.com/Stilyan-Kirov/my-operator/api/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // ImageScanReconciler reconciles a ImageScan object
@@ -36,6 +40,8 @@ type ImageScanReconciler struct {
 // +kubebuilder:rbac:groups=scan.my.domain,resources=imagescans,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=scan.my.domain,resources=imagescans/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=scan.my.domain,resources=imagescans/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=namespaces,verbs=list;watch
+// +kubebuilder:rbac:groups="",resources=pods,verbs=list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -47,11 +53,86 @@ type ImageScanReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.25.0/pkg/reconcile
 func (r *ImageScanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = logf.FromContext(ctx)
 
-	// TODO(user): your logic here
+	scan := &scanv1.ImageScan{} // Create an empty object that Get will populate.
+	err := r.Get(ctx, req.NamespacedName, scan)
+	// Handle a failed read before using scan.
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{}, fmt.Errorf("get ImageScan %q: %w", req.Name, err)
+	}
 
+	namespaceSelector, err := metav1.LabelSelectorAsSelector(&scan.Spec.NamespaceSelector)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf(
+			"invalid namespace selector for ImageScan %q: %w", scan.Name, err,
+		)
+	}
+
+	namespaces := &corev1.NamespaceList{}
+
+	// Define the filter for Namespace labels.
+	namespaceFilter := client.MatchingLabelsSelector{Selector: namespaceSelector}
+
+	// Read matching Namespaces into namespaces.Items.
+	err = r.List(ctx, namespaces, namespaceFilter)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf(
+			"list Namespaces for ImageScan %q: %w", scan.Name, err,
+		)
+	}
+	// Convert the Pod selector into a filter usable by List.
+	podSelector, err := metav1.LabelSelectorAsSelector(&scan.Spec.PodSelector)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("invalid pod selector for ImageScan %q: %w", scan.Name, err)
+	}
+
+	// Use the same label filter in every selected Namespace.
+	podFilter := client.MatchingLabelsSelector{Selector: podSelector}
+
+	// Keep one entry per image across all selected Namespaces and Pods.
+	images := make(map[string]bool)
+	// Visit every Namespace selected earlier.
+	for _, namespace := range namespaces.Items {
+		pods := &corev1.PodList{}
+
+		// Restrict this request to the current Namespace.
+		namespaceScope := client.InNamespace(namespace.Name)
+
+		// Read Pods matching both the Namespace and the Pod label filter.
+		err = r.List(ctx, pods, namespaceScope, podFilter)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf(
+				"list Pods in Namespace %q: %w", namespace.Name, err,
+			)
+		}
+		// Collect images from every matching Pod.
+		for _, pod := range pods.Items {
+			for _, container := range pod.Spec.Containers {
+				images[container.Image] = true
+			}
+
+			/* KEEP THIS FOR LATER
+			for _, container := range pod.Spec.InitContainers {
+				images[container.Image] = true
+			}
+
+			for _, container := range pod.Spec.EphemeralContainers {
+				images[container.Image] = true
+			}
+			*/
+		}
+	}
+
+	logf.FromContext(ctx).Info(
+		"Selected images for ImageScan",
+		"name", scan.Name,
+		"count", len(images),
+	)
 	return ctrl.Result{}, nil
+
 }
 
 // SetupWithManager sets up the controller with the Manager.

@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- scan_v1_imagescan.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

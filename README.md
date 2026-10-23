@@ -1,88 +1,135 @@
-## Увод
-Съществуват програми от тип "security scanners", които при подаден target (container image, kubernetes cluster, computer program...) изпълняват набор от проверки за откриване на уязвимости.
+# stilyan-kirov
+// TODO(user): Add simple overview of use/purpose
 
-Един такъв "scanner" е **Trivy**. В контекста на задачата се интересуваме единствено от способността му да извършва сканиране на [container images](https://en.wikipedia.org/wiki/Container_format).
+## Description
+// TODO(user): An in-depth paragraph about your project and overview of use
 
-В GitHub страницата на проекта (https://github.com/aquasecurity/trivy) може да намерите примери за изпълнение на scan върху image и документация за различните флагове и опции.
+## Getting Started
 
-## Цел на задачата
+### Prerequisites
+- go version v1.24.6+
+- docker version 17.03+.
+- kubectl version v1.11.3+.
+- Access to a Kubernetes v1.11.3+ cluster.
 
-Да се напише Kubernetes оператор на Go, който автоматизира security scanning на container images в cluster и предоставя лесен достъп до резултатите.
+### To Deploy on the cluster
+**Build and push your image to the location specified by `IMG`:**
 
-## Go Kubernetes Operator (стъпка 1)
+```sh
+make docker-build docker-push IMG=<some-registry>/stilyan-kirov:tag
+```
 
-Да се напише оператор на Go, който:
-- Ще бъде инсталиран в Kubernetes cluster. Препоръчително е да се използва Kind, но и други опции като Minikube също са приемливи стига да отговарят на нуждите.
-- Ще extend-не Kubernetes API с помощта на CRD (Custom Resouce Definition), т.е. ще инсталира дефиницията в клъстъра.
-- Ще реагира на нови обекти от тип дефинирания custom resource.
-- Ще валидира създаването на custom objects чрез помощта на `validating webhook`.
-- Ще има за цел да изпълнява security сканиране при създаване на custom resource и да съхранява резултатите от сканирането в persistent storage.
+**NOTE:** This image ought to be published in the personal registry you specified.
+And it is required to have access to pull the image from the working environment.
+Make sure you have the proper permission to the registry if the above commands don’t work.
 
-Операторът ще се инсталира в Kubernetes клъстъра като `Deployment`. Важно е да се обърне внимание на това, че операторът ще има нужда от права да създава, модифицира и изтрива съответните ресурси (`Job`/`Pod`/`Service`/etc.).
+**Install the CRDs into the cluster:**
 
-Конкретни изисквания относно сканирането и работата на оператора:
-- `CRD`-то да дефинира `cluster-scoped` ресурс с име `ImageScan`, който представлява заявка за изпълнение на security scan върху container images, използвани в `Pod`-ове в cluster-а. `CRD`-то трябва да описва:
-  - Механизъм за таргетиране на `Namespace`-и чрез label selector
-  - Механизъм за таргетиране на `Pod`-ове чрез label selector
-  - Забележка: Операторът таргетира само `Pod`-ове, не и други ресурси
-  - `ImageScan` ресурсът трябва да е immutable след създаването му
+```sh
+make install
+```
 
-- При успешна валидация на обекта от тип `ImageScan`:
-  - Намира всички `Pod` ресурси, които отговарят на условията от label selector-ите и извлича всички уникални image референции
-  - Изпълнява Trivy scan върху всички уникални images чрез `Job` ресурс.
-  - Резултатите от сканирането да се записват в JSON формат в persistent storage (напр. `PVC`)
-  - Статусът на операцията да се записва в `ImageScan` ресурса, например когато нещо не сработи искаме да можем да го видим в `.status` [subresource](https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions/#status-subresource)-a. 
-  - За удобство ще искаме всеки scan да може да бъде идентифициран с уникално ID. Те също могат да бъдат записвани в `.status` subresource.
+**Deploy the Manager to the cluster with the image specified by `IMG`:**
 
-- При приключване на сканиране:
-  - Съответните `Job` ресурси да се изтриват.
+```sh
+make deploy IMG=<some-registry>/stilyan-kirov:tag
+```
 
-## Предоставяне на достъп до резултатите (стъпка 2)
+> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
+privileges or be logged in as admin.
 
-Освен извършването на основната функционалност (сканиране), операторът трябва също да предоставя функционалност за лесното извличане на резултатите от сканирането.
-За целта, операторът трябва да предоставя HTTP endpoints за достъп до scan резултатите. Резултатите трябва да са в machine-readable формат (напр. JSON):
-- `GET /scans/{id}` - връща резултата от конкретно сканиране по неговото ID
-- `GET /scans` - връща списък със scan резултати, с опция за филтриране по image prefix
+**Create instances of your solution**
+You can apply the samples (examples) from the config/sample:
 
-Този endpoint може да бъде реализиран като част от оператора или като отделен компонент, който използва същия persistent storage (volume) за достъп до резултатите. В случая на отделния компонент, той може да бъде стартиран като допълнителен контейнер в същия `Pod` на оператора, който изпълнява сканирането.
+```sh
+kubectl apply -k config/samples/
+```
 
-Ще е нужен `Service` ресурс, който да expose-не този endpoint в cluster-а, за да може администраторите да го достъпват. За по-лесно нека service-ът е от тип `ClusterIP`. Връзка към него може да се тества с командата `kubectl port-forward service/<nameofservice>`.
+>**NOTE**: Ensure that the samples has default values to test it out.
 
-### Примерен сценарий за използване:
-1. Администратор създава `ImageScan` ресурс, който таргетира всички `Pod`-ове с label `app=web` в `Namespace`-и с label `env=production`.
-2. Validating webhook-ът проверява дали заявката е валидна, като валидира че има ресурси (`Pod`-ове), които биха били таргетирани от комбинацията от namespace и pod label selectors.
-3. Операторът открива всички `Pod`-ове с този label, извлича уникалните container images и изпълнява Trivy scan върху тях.
-4. Резултатите от сканирането се записват в JSON файлове в `PVC`.
-5. Администраторът проверява `.status` полето на създадения `ImageScan` ресурс и извлича ID-тата на сканиранията.
-6. Администраторът изпълнява `kubectl port-forward service/scan-results-service 8080:80`, извиква `GET http://localhost:8080/scans/{id}` и получава резултата от конкретното сканиране.
-7. Администраторът може да прегледа резултатите и да предприеме действия, ако бъдат открити уязвимости.
+### To Uninstall
+**Delete the instances (CRs) from the cluster:**
 
-### Бонус!
-- Pagination (limit и offset) за `GET /scans` endpoint-а
-- Възможност за сканиране на частни registry-та, като се предоставят credentials чрез Kubernetes `Secret`.
-- Да се разшири дефиницията на `CRD`-то, така че да поддържа `--severity` флагът на Trivy, който позволява да се зададе минималното ниво на сериозност на уязвимостите, които да бъдат включени в резултатите от сканирането. 
+```sh
+kubectl delete -k config/samples/
+```
 
-### Документация
+**Delete the APIs(CRDs) from the cluster:**
 
-- [Trivy Documentation](https://trivy.dev/docs/latest/guide/)
-- [Operator Pattern](https://kubernetes.io/docs/concepts/extend-kubernetes/operator/)
-- [CRDs](https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions/)
-- [Pod](https://kubernetes.io/docs/concepts/workloads/pods/)
-- [Deployments](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/)
-- [Jobs](https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/)
-- [Jobs](https://kubernetes.io/docs/concepts/workloads/controllers/job/)
-- [Persistent Volumes](https://kubernetes.io/docs/concepts/storage/persistent-volumes/)
-- [Persistent Volume Claims](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#persistentvolumeclaims)
-- [Services](https://kubernetes.io/docs/concepts/services-networking/service/)
-- [Validating Webhooks](https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/)
-- [kubectl Cheat Sheet](https://kubernetes.io/docs/reference/kubectl/quick-reference/)
+```sh
+make uninstall
+```
 
-### Библиотеки и инструменти (не е изчерпателен списък), които ще бъдат от полза при имплементацията на оператора:
-- [client-go](https://github.com/kubernetes/client-go/)
-- [controller-runtime](https://github.com/kubernetes-sigs/controller-runtime)
-- [kubebuilder](https://book.kubebuilder.io/)
+**UnDeploy the controller from the cluster:**
 
-## Пояснения
+```sh
+make undeploy
+```
 
-Части от задачата подлежи на интерпретация!
-Основната цел е да се обяснят и аргументират взетите решения за конкретната имплементация.
+## Project Distribution
+
+Following the options to release and provide this solution to the users.
+
+### By providing a bundle with all YAML files
+
+1. Build the installer for the image built and published in the registry:
+
+```sh
+make build-installer IMG=<some-registry>/stilyan-kirov:tag
+```
+
+**NOTE:** The makefile target mentioned above generates an 'install.yaml'
+file in the dist directory. This file contains all the resources built
+with Kustomize, which are necessary to install this project without its
+dependencies.
+
+2. Using the installer
+
+Users can just run 'kubectl apply -f <URL for YAML BUNDLE>' to install
+the project, i.e.:
+
+```sh
+kubectl apply -f https://raw.githubusercontent.com/<org>/stilyan-kirov/<tag or branch>/dist/install.yaml
+```
+
+### By providing a Helm Chart
+
+1. Build the chart using the optional helm plugin
+
+```sh
+kubebuilder edit --plugins=helm/v2-alpha
+```
+
+2. See that a chart was generated under 'dist/chart', and users
+can obtain this solution from there.
+
+**NOTE:** If you change the project, you need to update the Helm Chart
+using the same command above to sync the latest changes. Furthermore,
+if you create webhooks, you need to use the above command with
+the '--force' flag and manually ensure that any custom configuration
+previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml'
+is manually re-applied afterwards.
+
+## Contributing
+// TODO(user): Add detailed information on how you would like others to contribute to this project
+
+**NOTE:** Run `make help` for more information on all potential `make` targets
+
+More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
+
+## License
+
+Copyright 2026.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+

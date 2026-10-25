@@ -15,7 +15,7 @@ spec:
   storageClassName: ""
   claimRef:
     name: imagescan-results-pvc
-    namespace: stilyan-kirov-system
+    namespace: imagescan-project-system
   hostPath:
     path: /var/local/imagescan-results
     type: DirectoryOrCreate

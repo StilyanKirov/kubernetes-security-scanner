@@ -2,7 +2,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: imagescan-results-pvc
-  namespace: stilyan-kirov-system
+  namespace: imagescan-project-system
 spec:
   accessModes:
     - ReadWriteOnce

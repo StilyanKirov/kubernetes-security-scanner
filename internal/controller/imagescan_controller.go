@@ -194,7 +194,7 @@ func (r *ImageScanReconciler) reconcileJobs(ctx context.Context, scan *scanv1.Im
 		jobName := "imagescan-" + result.ID
 		job := &batchv1.Job{}
 
-		err := r.Get(ctx, client.ObjectKey{Name: jobName, Namespace: "stilyan-kirov-system"}, job)
+		err := r.Get(ctx, client.ObjectKey{Name: jobName, Namespace: "imagescan-project-system"}, job)
 		if err == nil {
 			for _, condition := range job.Status.Conditions {
 				if condition.Type == batchv1.JobComplete && condition.Status == corev1.ConditionTrue {
@@ -279,7 +279,7 @@ func (r *ImageScanReconciler) reconcileJobs(ctx context.Context, scan *scanv1.Im
 		job := &batchv1.Job{ // Delete the Job associated with the completed scan result with the same name and namespace as the Job created earlier.
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "imagescan-" + result.ID,
-				Namespace: "stilyan-kirov-system",
+				Namespace: "imagescan-project-system",
 			},
 		}
 		if err := r.Delete(ctx, job); err != nil && !apierrors.IsNotFound(err) { // Ignore not found errors, as the Job may have already been deleted.
@@ -293,7 +293,7 @@ func jobForResult(result scanv1.ImageScanResult) *batchv1.Job {
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "imagescan-" + result.ID,
-			Namespace: "stilyan-kirov-system",
+			Namespace: "imagescan-project-system",
 		},
 		Spec: batchv1.JobSpec{
 			Template: corev1.PodTemplateSpec{

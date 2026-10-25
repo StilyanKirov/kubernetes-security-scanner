@@ -202,6 +202,19 @@ func (r *ImageScanReconciler) reconcileJobs(ctx context.Context, scan *scanv1.Im
 					statusChanged = true
 					break
 				}
+				if condition.Type == batchv1.JobFailed && condition.Status == corev1.ConditionTrue {
+					result.Phase = scanv1.ScanPhaseFailed
+					result.Message = condition.Message
+					if result.Message == "" {
+						result.Message = condition.Reason
+					}
+					statusChanged = true
+					break
+				}
+			}
+			if result.Phase == scanv1.ScanPhasePending {
+				result.Phase = scanv1.ScanPhaseRunning
+				statusChanged = true
 			}
 			continue
 		}
@@ -209,7 +222,7 @@ func (r *ImageScanReconciler) reconcileJobs(ctx context.Context, scan *scanv1.Im
 			return fmt.Errorf("get Job %q: %w", jobName, err)
 		}
 
-		// Тук ще създадем липсващия Job в следващата стъпка.
+		// Job Trivy created
 		newJob := jobForResult(*result)
 		err = controllerutil.SetControllerReference(scan, newJob, r.Scheme)
 		if err != nil {
@@ -221,9 +234,56 @@ func (r *ImageScanReconciler) reconcileJobs(ctx context.Context, scan *scanv1.Im
 			return fmt.Errorf("create Job %q: %w", newJob.Name, err)
 		}
 	}
+
+	allCompleted := len(scan.Status.Scans) > 0
+	anyFailed := false
+	anyRunning := false
+
+	for _, result := range scan.Status.Scans {
+		if result.Phase == scanv1.ScanPhaseFailed {
+			anyFailed = true
+		}
+		if result.Phase == scanv1.ScanPhaseRunning {
+			anyRunning = true
+		}
+		if result.Phase != scanv1.ScanPhaseCompleted {
+			allCompleted = false
+		}
+	}
+
+	overallPhase := scanv1.ScanPhasePending
+	if anyFailed {
+		overallPhase = scanv1.ScanPhaseFailed
+	} else if allCompleted {
+		overallPhase = scanv1.ScanPhaseCompleted
+	} else if anyRunning {
+		overallPhase = scanv1.ScanPhaseRunning
+	}
+
+	if scan.Status.Phase != overallPhase {
+		scan.Status.Phase = overallPhase
+		statusChanged = true
+	}
+
 	if statusChanged {
 		if err := r.Status().Update(ctx, scan); err != nil {
 			return fmt.Errorf("update status for ImageScan %q: %w", scan.Name, err)
+		}
+	}
+	/*Delete completed jobs, why JSON reports are stored in PVC */
+	for _, result := range scan.Status.Scans {
+		if result.Phase != scanv1.ScanPhaseCompleted {
+			continue
+		}
+
+		job := &batchv1.Job{ // Delete the Job associated with the completed scan result with the same name and namespace as the Job created earlier.
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "imagescan-" + result.ID,
+				Namespace: "stilyan-kirov-system",
+			},
+		}
+		if err := r.Delete(ctx, job); err != nil && !apierrors.IsNotFound(err) { // Ignore not found errors, as the Job may have already been deleted.
+			return fmt.Errorf("delete Job %q: %w", job.Name, err)
 		}
 	}
 	return nil
@@ -258,7 +318,7 @@ func jobForResult(result scanv1.ImageScanResult) *batchv1.Job {
 						Name: "reports",
 						VolumeSource: corev1.VolumeSource{
 							PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-								ClaimName: "imagescan-results",
+								ClaimName: "imagescan-results-pvc",
 							},
 						},
 					}},

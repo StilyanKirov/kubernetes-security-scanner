@@ -1,4 +1,6 @@
 ## Append samples of your project ##
 resources:
 - scan_v1_imagescan.yaml
+- imagescan-results-pvc.yaml
+- imagescan-results-pv.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

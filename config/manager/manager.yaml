@@ -96,7 +96,13 @@ spec:
           requests:
             cpu: 10m
             memory: 64Mi
-        volumeMounts: []
-      volumes: []
+        volumeMounts:
+        - name: reports
+          mountPath: /reports
+          readOnly: true
+      volumes:
+      - name: reports
+        persistentVolumeClaim:
+          claimName: imagescan-results-pvc
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10

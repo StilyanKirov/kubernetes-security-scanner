@@ -57,10 +57,10 @@ type ImageScanReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.25.0/pkg/reconcile
 func (r *ImageScanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
-	scan := &scanv1.ImageScan{} // Create an empty object that Get will populate.
-	err := r.Get(ctx, req.NamespacedName, scan)
+	scan := &scanv1.ImageScan{}                 // Create an empty object that Get will populate.
+	err := r.Get(ctx, req.NamespacedName, scan) // fetches the ImageScan object identified by req.NamespacedName from the Kubernetes API and populates the empty scan object with its data. If the object is not found, it returns an error.
 	// Handle a failed read before using scan.
-	if err != nil {
+	if err != nil { // Indicating that the Get operation failed.
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
@@ -70,9 +70,8 @@ func (r *ImageScanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// Skip initialization if this ImageScan already has a saved status.
 	// Discover images and save their initial status only once.
 	if scan.Status.Phase == "" {
-		//return ctrl.Result{}, nil
 
-		namespaceSelector, err := metav1.LabelSelectorAsSelector(&scan.Spec.NamespaceSelector)
+		namespaceSelector, err := metav1.LabelSelectorAsSelector(&scan.Spec.NamespaceSelector) // Convert the Namespace selector into a filter usable by List.
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf(
 				"invalid namespace selector for ImageScan %q: %w", scan.Name, err,
@@ -82,17 +81,17 @@ func (r *ImageScanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		namespaces := &corev1.NamespaceList{}
 
 		// Define the filter for Namespace labels.
-		namespaceFilter := client.MatchingLabelsSelector{Selector: namespaceSelector}
+		namespaceFilter := client.MatchingLabelsSelector{Selector: namespaceSelector} // Define the filter for Namespace labels.
 
 		// Read matching Namespaces into namespaces.Items.
-		err = r.List(ctx, namespaces, namespaceFilter)
+		err = r.List(ctx, namespaces, namespaceFilter) // List all Namespaces that match the label selector defined in the ImageScan spec. The results are stored in the namespaces variable.
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf(
 				"list Namespaces for ImageScan %q: %w", scan.Name, err,
 			)
 		}
 		// Convert the Pod selector into a filter usable by List.
-		podSelector, err := metav1.LabelSelectorAsSelector(&scan.Spec.PodSelector)
+		podSelector, err := metav1.LabelSelectorAsSelector(&scan.Spec.PodSelector) // Convert the Pod selector into a filter usable by List.
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("invalid pod selector for ImageScan %q: %w", scan.Name, err)
 		}

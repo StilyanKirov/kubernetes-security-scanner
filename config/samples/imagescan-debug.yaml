@@ -1,0 +1,11 @@
+apiVersion: scan.my.domain/v1
+kind: ImageScan
+metadata:
+  name: imagescan-debug
+spec:
+  namespaceSelector:
+    matchLabels:
+      env: production
+  podSelector:
+    matchLabels:
+      app: web

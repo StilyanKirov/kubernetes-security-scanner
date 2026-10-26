@@ -39,6 +39,8 @@ type ImageScanReconciler struct {
 	Scheme *runtime.Scheme
 }
 
+const scanJobNamespace = "imagescan-project-system"
+
 // +kubebuilder:rbac:groups=scan.my.domain,resources=imagescans,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=scan.my.domain,resources=imagescans/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=scan.my.domain,resources=imagescans/finalizers,verbs=update
@@ -179,10 +181,10 @@ func (r *ImageScanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 }
 
 func (r *ImageScanReconciler) reconcileJobs(ctx context.Context, scan *scanv1.ImageScan) error {
-	//for _, result := range scan.Status.Scans {
-	//	if result.Phase != scanv1.ScanPhasePending {
-	//		continue
-	//	}
+	// for _, result := range scan.Status.Scans {
+	// 	if result.Phase != scanv1.ScanPhasePending {
+	// 		continue
+	// 	}
 	statusChanged := false
 	for i := range scan.Status.Scans {
 		result := &scan.Status.Scans[i]
@@ -193,7 +195,7 @@ func (r *ImageScanReconciler) reconcileJobs(ctx context.Context, scan *scanv1.Im
 		jobName := "imagescan-" + result.ID
 		job := &batchv1.Job{}
 
-		err := r.Get(ctx, client.ObjectKey{Name: jobName, Namespace: "imagescan-project-system"}, job)
+		err := r.Get(ctx, client.ObjectKey{Name: jobName, Namespace: scanJobNamespace}, job)
 		if err == nil {
 			for _, condition := range job.Status.Conditions {
 				if condition.Type == batchv1.JobComplete && condition.Status == corev1.ConditionTrue {
@@ -269,7 +271,7 @@ func (r *ImageScanReconciler) reconcileJobs(ctx context.Context, scan *scanv1.Im
 			return fmt.Errorf("update status for ImageScan %q: %w", scan.Name, err)
 		}
 	}
-	/*Delete completed jobs, why JSON reports are stored in PVC */
+	/* Delete completed jobs, why JSON reports are stored in PVC */
 	for _, result := range scan.Status.Scans {
 		if result.Phase != scanv1.ScanPhaseCompleted {
 			continue
@@ -278,7 +280,7 @@ func (r *ImageScanReconciler) reconcileJobs(ctx context.Context, scan *scanv1.Im
 		job := &batchv1.Job{ // Delete the Job associated with the completed scan result with the same name and namespace as the Job created earlier.
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "imagescan-" + result.ID,
-				Namespace: "imagescan-project-system",
+				Namespace: scanJobNamespace,
 			},
 		}
 		if err := r.Delete(ctx, job); err != nil && !apierrors.IsNotFound(err) { // Ignore not found errors, as the Job may have already been deleted.
@@ -292,7 +294,7 @@ func jobForResult(result scanv1.ImageScanResult) *batchv1.Job {
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "imagescan-" + result.ID,
-			Namespace: "imagescan-project-system",
+			Namespace: scanJobNamespace,
 		},
 		Spec: batchv1.JobSpec{
 			Template: corev1.PodTemplateSpec{
@@ -301,7 +303,7 @@ func jobForResult(result scanv1.ImageScanResult) *batchv1.Job {
 					Containers: []corev1.Container{{
 						Name:  "trivy",
 						Image: "aquasec/trivy:0.76.1",
-						//Args:  []string{"image", "--format", "json", result.Image},
+						// Args:  []string{"image", "--format", "json", result.Image},
 						Args: []string{
 							"image",
 							"--format", "json",

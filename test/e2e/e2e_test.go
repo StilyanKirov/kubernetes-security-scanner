@@ -68,6 +68,14 @@ var _ = Describe("Manager", Ordered, func() {
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
 
+		By("creating storage for scan reports")
+		cmd = exec.Command("kubectl", "apply",
+			"-f", "config/samples/imagescan-results-pv.yaml",
+			"-f", "config/samples/imagescan-results-pvc.yaml",
+		)
+		_, err = utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred(), "Failed to create scan report storage")
+
 		By("deploying the controller-manager")
 		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", managerImage))
 		_, err = utils.Run(cmd)

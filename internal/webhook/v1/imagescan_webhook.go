@@ -41,7 +41,7 @@ func SetupImageScanWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-//mgr.GetAPIReader() подава четец, който пита API сървъра директно.
+// mgr.GetAPIReader() подава четец, който пита API сървъра директно.
 // Така проверката при създаване не разчита на евентуално остарял кеш.
 
 // TODO(user): EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -56,7 +56,8 @@ func SetupImageScanWebhookWithManager(mgr ctrl.Manager) error {
 // NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
 // as this struct is used only for temporary operations and does not need to be deeply copied.
 type ImageScanValidator struct {
-	Reader client.Reader //Полето Reader дава на ImageScanValidator начин да прочете Namespace и Pod при ValidateCreate.
+	// Полето Reader дава на ImageScanValidator начин да прочете Namespace и Pod при ValidateCreate.
+	Reader client.Reader
 }
 
 // ValidateCreate implements admission.Validator so a webhook will be registered for the type ImageScan.
@@ -76,10 +77,7 @@ func (v *ImageScanValidator) ValidateCreate(ctx context.Context, obj *scanv1.Ima
 	if err != nil {
 		return nil, fmt.Errorf("invalid spec.podSelector: %w", err)
 	}
-	//var namespaces corev1.NamespaceList
-	//if err := v.Reader.List(ctx, &namespaces, client.MatchingLabelsSelector{Selector: namespaceSelector}); err != nil {
-	//	return nil, fmt.Errorf("list matching Namespaces: %w", err)
-	//}
+
 	namespaces := &corev1.NamespaceList{}
 	namespaceFilter := client.MatchingLabelsSelector{Selector: namespaceSelector}
 	err = v.Reader.List(ctx, namespaces, namespaceFilter)
@@ -88,13 +86,13 @@ func (v *ImageScanValidator) ValidateCreate(ctx context.Context, obj *scanv1.Ima
 	}
 
 	for _, namespace := range namespaces.Items {
-		//var pods corev1.PodList
+		// var pods corev1.PodList
 		pods := &corev1.PodList{}
 		podFilter := client.MatchingLabelsSelector{Selector: podSelector}
 		innamespace := client.InNamespace(namespace.Name)
 		err = v.Reader.List(ctx, pods, innamespace, podFilter)
-		/*Този ред иска от Kubernetes: „Дай ми Pods в namespace.Name,
-		чиито етикети съвпадат с podSelector.“ Резултатите се записват в pods.Items.*/
+		/* Този ред иска от Kubernetes: „Дай ми Pods в namespace.Name,
+		чиито етикети съвпадат с podSelector.“ Резултатите се записват в pods.Items. */
 		if err != nil {
 			return nil, fmt.Errorf("could not list Pods in Namespace %q: %w", namespace.Name, err)
 		}

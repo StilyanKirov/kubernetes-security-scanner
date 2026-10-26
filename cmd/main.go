@@ -101,7 +101,8 @@ func getAllScans(w http.ResponseWriter, r *http.Request) {
 			var metadata struct {
 				ArtifactName string `json:"ArtifactName"`
 			}
-			if err := json.Unmarshal(report, &metadata); err != nil { // Unmarshal the report JSON data into the metadata struct to extract the ArtifactName
+			// Unmarshal the report JSON data into the metadata struct to extract the ArtifactName
+			if err := json.Unmarshal(report, &metadata); err != nil {
 				setupLog.Error(err, "Failed to read scan report metadata")
 				continue
 			}
@@ -109,18 +110,23 @@ func getAllScans(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 		}
-		reports = append(reports, ScanReport{ScanID: strings.TrimSuffix(entry.Name(), ".json"), Report: report}) // Append the scan report to the reports slice, using the filename (without the .json extension) as the ScanID
+		// Append the scan report to the reports slice, using the filename (without the .json extension) as the ScanID
+		reports = append(reports, ScanReport{ScanID: strings.TrimSuffix(entry.Name(), ".json"), Report: report})
 	}
 
-	w.Header().Set("Content-Type", "application/json")         // Set the Content-Type header to indicate that the response contains JSON data
-	if err := json.NewEncoder(w).Encode(reports); err != nil { // Encode the reports slice as JSON and write it to the response writer.
+	// Set the Content-Type header to indicate that the response contains JSON data
+	w.Header().Set("Content-Type", "application/json")
+	// Encode the reports slice as JSON and write it to the response writer.
+	if err := json.NewEncoder(w).Encode(reports); err != nil {
 		setupLog.Error(err, "Failed to write scan reports response")
 	}
 }
 
 func scanHandler() http.Handler { //
-	mux := http.NewServeMux() // Create a new HTTP request multiplexer (router) -->ServeMux is an HTTP request multiplexer.
-	// It matches the URL of each incoming request against a list of registered patterns and calls the handler for the pattern that most closely matches the URL.
+	// Create a new HTTP request multiplexer (router) -->ServeMux is an HTTP request multiplexer.
+	// It matches the URL of each incoming request against a list of
+	// registered patterns and calls the handler for the pattern that most closely matches the URL.
+	mux := http.NewServeMux()
 	mux.HandleFunc("GET /scans/{id}", getScanByID)
 	mux.HandleFunc("GET /scans", getAllScans)
 	return mux
@@ -282,7 +288,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := mgr.Add(&manager.Server{ // registers an HTTP server with the manager. When the manager starts, that server listens on port 8082 and uses scanHandler() for requests
+	// registers an HTTP server with the manager. When the manager starts,
+	// that server listens on port 8082 and uses scanHandler() for requests
+	if err := mgr.Add(&manager.Server{
 		Name: "scan reports",
 		Server: &http.Server{
 			Addr:    ":8082",

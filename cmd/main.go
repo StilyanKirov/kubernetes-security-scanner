@@ -18,9 +18,13 @@ package main
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"flag"
+	"net/http"
 	"os"
+	"strings"
 
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -51,6 +55,75 @@ func init() {
 
 	utilruntime.Must(scanv1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
+}
+
+func getScanByID(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		http.Error(w, "invalid scan ID", http.StatusBadRequest)
+		return
+	}
+
+	http.ServeFile(w, r, "/reports/"+id+".json")
+}
+
+type ScanReport struct {
+	ScanID string          `json:"scanID"`
+	Report json.RawMessage `json:"report"`
+}
+
+func getAllScans(w http.ResponseWriter, r *http.Request) {
+	prefix := r.URL.Query().Get("imagePrefix") // Get the "imagePrefix" query parameter from the request URL
+	entries, err := os.ReadDir("/reports")
+	if err != nil {
+		http.Error(w, "could not read scan reports", http.StatusInternalServerError)
+		return
+	}
+
+	reports := make([]ScanReport, 0)
+	for _, entry := range entries { // Iterate over the entries in the /reports directory
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") { // Skip directories and non-JSON files
+			continue
+		}
+
+		data, err := os.ReadFile("/reports/" + entry.Name()) // Read the contents of the JSON file
+		if err != nil {
+			setupLog.Error(err, "Failed to read scan report")
+			continue
+		}
+
+		var report json.RawMessage                            // Declare a variable to hold the unmarshaled JSON data
+		if err := json.Unmarshal(data, &report); err != nil { // Unmarshal the JSON data into the report variable
+			setupLog.Error(err, "Failed to unmarshal scan report")
+			continue
+		}
+		if prefix != "" {
+			var metadata struct {
+				ArtifactName string `json:"ArtifactName"`
+			}
+			if err := json.Unmarshal(report, &metadata); err != nil { // Unmarshal the report JSON data into the metadata struct to extract the ArtifactName
+				setupLog.Error(err, "Failed to read scan report metadata")
+				continue
+			}
+			if !strings.HasPrefix(metadata.ArtifactName, prefix) {
+				continue
+			}
+		}
+		reports = append(reports, ScanReport{ScanID: strings.TrimSuffix(entry.Name(), ".json"), Report: report}) // Append the scan report to the reports slice, using the filename (without the .json extension) as the ScanID
+	}
+
+	w.Header().Set("Content-Type", "application/json")         // Set the Content-Type header to indicate that the response contains JSON data
+	if err := json.NewEncoder(w).Encode(reports); err != nil { // Encode the reports slice as JSON and write it to the response writer.
+		setupLog.Error(err, "Failed to write scan reports response")
+	}
+}
+
+func scanHandler() http.Handler { //
+	mux := http.NewServeMux() // Create a new HTTP request multiplexer (router) -->ServeMux is an HTTP request multiplexer.
+	// It matches the URL of each incoming request against a list of registered patterns and calls the handler for the pattern that most closely matches the URL.
+	mux.HandleFunc("GET /scans/{id}", getScanByID)
+	mux.HandleFunc("GET /scans", getAllScans)
+	return mux
 }
 
 // nolint:gocyclo
@@ -209,6 +282,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := mgr.Add(&manager.Server{ // registers an HTTP server with the manager. When the manager starts, that server listens on port 8082 and uses scanHandler() for requests
+		Name: "scan reports",
+		Server: &http.Server{
+			Addr:    ":8082",
+			Handler: scanHandler(),
+		},
+	}); err != nil {
+		setupLog.Error(err, "Failed to set up scan report server")
+		os.Exit(1)
+	}
 	setupLog.Info("Starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "Failed to run manager")

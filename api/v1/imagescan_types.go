@@ -146,5 +146,4 @@ func init() {
 		// за съответната API група и версия в runtime.Scheme.
 		return nil
 	})
-	//SchemeBuilder.Register(&ImageScan{}, &ImageScanList{})
 }

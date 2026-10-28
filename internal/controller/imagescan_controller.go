@@ -72,10 +72,10 @@ func (r *ImageScanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, fmt.Errorf("get ImageScan %q: %w", req.Name, err)
 	}
 
-	/*--------------------------------------------------------*/
-	//			Initialization of ImageScan					   //
-	//Discover images and save their initial status only once. */
-	/*++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
+	/* -------------------------------------------------------- */
+	//			Initialization of ImageScan					    //
+	// Discover images and save their initial status only once. */
+	/* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 	if scan.Status.Phase == "" {
 
 		namespaceSelector, err := metav1.LabelSelectorAsSelector(&scan.Spec.NamespaceSelector) // Convert the Namespace selector into a filter usable by List.
@@ -126,7 +126,7 @@ func (r *ImageScanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			// Collect images from every matching Pod.
 			for _, pod := range pods.Items {
 				for _, container := range pod.Spec.Containers { // Итерира през всички контейнери в Pod и добавя техните образи в images map.
-					images[container.Image] = true //String е образа , а bool е просто флаг за уникалност, не се използва за нищо друго.
+					images[container.Image] = true // String е образа , а bool е просто флаг за уникалност, не се използва за нищо друго.
 				}
 				for _, container := range pod.Spec.InitContainers {
 					images[container.Image] = true
@@ -138,9 +138,9 @@ func (r *ImageScanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 			}
 		}
-		/*--------------------------------------------------------*/
-		// 			Fill in found images to the images map        //
-		/*++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
+		/* -------------------------------------------------------- */
+		// 			Fill in found images to the images map          //
+		/* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 		scan.Status.Scans = []scanv1.ImageScanResult{}
 		scanNumber := 1
 		for image := range images {
@@ -182,16 +182,16 @@ func (r *ImageScanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 }
 
 func (r *ImageScanReconciler) reconcileJobs(ctx context.Context, scan *scanv1.ImageScan) error {
-	/*ctx е контекстът, който се използва за комуникация с Kubernetes API сървъра.
-	  ImageScan обекта е вече инициализирания обект */
+	/* ctx е контекстът, който се използва за комуникация с Kubernetes API сървъра.
+	ImageScan обекта е вече инициализирания обект */
 
 	// flag for status changes, if any
 	statusChanged := false
 	// flag for job creation errors, if any
 	var jobCreateErr error
-	/*--------------------------------------------------------*/
-	// 		Iterate through the list of images to scan        //
-	/*++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
+	/* -------------------------------------------------------- */
+	// 		Iterate through the list of images to scan          //
+	/* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 	for i := range scan.Status.Scans {
 		result := &scan.Status.Scans[i] // Go auto-dereferences for field access ✅
 
@@ -235,9 +235,9 @@ func (r *ImageScanReconciler) reconcileJobs(ctx context.Context, scan *scanv1.Im
 			return fmt.Errorf("get Job %q: %w", jobName, err)
 		}
 
-		/*--------------------------------*/
-		// 		CREATE NEW Trivy Job      //
-		/*+++++++++++++++++++++++++++++++*/
+		/* -------------------------------- */
+		// 		CREATE NEW Trivy Job       //
+		/* ------------------------------- */
 		newJob := jobForResult(*result, scan.Spec.Severity)
 		/* Set ImageScan as the Job's controller owner.
 			This enables garbage collection when ImageScan is deleted
@@ -261,36 +261,9 @@ func (r *ImageScanReconciler) reconcileJobs(ctx context.Context, scan *scanv1.Im
 			break
 		}
 	}
-
-	allCompleted := len(scan.Status.Scans) > 0
-	anyFailed := false
-	anyRunning := false
-
-	for _, result := range scan.Status.Scans {
-		// Итерира през всички резултати от сканирането, за да определи общия статус на ImageScan обекта.
-		if result.Phase == scanv1.ScanPhaseFailed {
-			anyFailed = true
-		}
-		if result.Phase == scanv1.ScanPhaseRunning {
-			anyRunning = true
-		}
-		if result.Phase != scanv1.ScanPhaseCompleted {
-			allCompleted = false
-		}
-	}
-
-	// overallPhase is a flag for the overall status of the ImageScan object.
-	/*--------------------------------*/
-	// 		Set overall status       //
-	/*+++++++++++++++++++++++++++++++*/
-	overallPhase := scanv1.ScanPhasePending
-	if anyFailed { // Ако поне един резултат е неуспешен
-		overallPhase = scanv1.ScanPhaseFailed
-	} else if allCompleted { // Ако всички резултати са завършени успешно
-		overallPhase = scanv1.ScanPhaseCompleted
-	} else if anyRunning { // Ако поне един резултат е в процес на изпълнение
-		overallPhase = scanv1.ScanPhaseRunning
-	}
+	/* --------------------------------*/
+	// 		Set overall status         //
+	overallPhase := overallScanPhase(scan.Status.Scans)
 
 	if scan.Status.Phase != overallPhase {
 		// адреса на обобщения статус на ImageScan се определя въз основа на индивидуалните резултати от сканирането.
@@ -344,7 +317,7 @@ func jobForResult(result scanv1.ImageScanResult, severity string) *batchv1.Job {
 	// The image to scan is always the last argument.
 	args = append(args, result.Image)
 
-	/*result is the scan result for which to create a Job*/
+	/* result is the scan result for which to create a Job*/
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "imagescan-" + result.ID,
@@ -367,7 +340,7 @@ func jobForResult(result scanv1.ImageScanResult, severity string) *batchv1.Job {
 					}},
 					Volumes: []corev1.Volume{{
 						Name: "reports",
-						VolumeSource: corev1.VolumeSource{ //Връзка между PVC и Volume, който ще се монтира в контейнера.
+						VolumeSource: corev1.VolumeSource{ // Връзка между PVC и Volume, който ще се монтира в контейнера.
 							PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 								ClaimName: "imagescan-results-pvc",
 							},
@@ -377,6 +350,35 @@ func jobForResult(result scanv1.ImageScanResult, severity string) *batchv1.Job {
 			},
 		},
 	}
+}
+
+func overallScanPhase(results []scanv1.ImageScanResult) scanv1.ScanPhase {
+	allCompleted := len(results) > 0
+	anyFailed := false
+	anyRunning := false
+
+	for _, result := range results {
+		if result.Phase == scanv1.ScanPhaseFailed {
+			anyFailed = true
+		}
+		if result.Phase == scanv1.ScanPhaseRunning {
+			anyRunning = true
+		}
+		if result.Phase != scanv1.ScanPhaseCompleted {
+			allCompleted = false
+		}
+	}
+
+	if anyFailed {
+		return scanv1.ScanPhaseFailed
+	}
+	if allCompleted {
+		return scanv1.ScanPhaseCompleted
+	}
+	if anyRunning {
+		return scanv1.ScanPhaseRunning
+	}
+	return scanv1.ScanPhasePending
 }
 
 // SetupWithManager sets up the controller with the Manager.

@@ -154,6 +154,23 @@ build-installer: manifests generate kustomize ## Generate a consolidated YAML wi
 
 ##@ Deployment
 
+# Local Kind workflow for the already-installed operator. Uses the current kubectl context.
+.PHONY: deploy-dev
+deploy-dev: ## Build, load and activate the dev operator in the existing Kind cluster named kind.
+	docker build $(if $(BASE_IMAGE),--build-arg BASE_IMAGE=$(BASE_IMAGE)) -f Dockerfile -t imagescan-operator:dev .
+	$(KIND) load docker-image imagescan-operator:dev --name kind
+	$(KUBECTL) -n imagescan-project-system patch deployment imagescan-project-controller-manager --type=strategic --patch-file config/manager/dev-mode-patch.yaml
+	$(KUBECTL) -n imagescan-project-system rollout restart deployment/imagescan-project-controller-manager
+	$(KUBECTL) -n imagescan-project-system rollout status deployment/imagescan-project-controller-manager --timeout=120s
+
+.PHONY: deploy-debug
+deploy-debug: ## Build, load and activate the debug operator in the existing Kind cluster named kind.
+	docker build -f Dockerfile.debug -t imagescan-operator:debug .
+	$(KIND) load docker-image imagescan-operator:debug --name kind
+	$(KUBECTL) -n imagescan-project-system patch deployment imagescan-project-controller-manager --type=strategic --patch-file config/manager/debug-mode-patch.yaml
+	$(KUBECTL) -n imagescan-project-system rollout restart deployment/imagescan-project-controller-manager
+	$(KUBECTL) -n imagescan-project-system rollout status deployment/imagescan-project-controller-manager --timeout=120s
+
 ifndef ignore-not-found
   ignore-not-found = false
 endif

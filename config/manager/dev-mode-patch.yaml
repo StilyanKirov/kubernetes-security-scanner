@@ -1,0 +1,36 @@
+# Strategic merge patch for the installed manager; used by make deploy-dev.
+spec:
+  template:
+    spec:
+      containers:
+        - name: manager
+          image: imagescan-operator:dev
+          imagePullPolicy: IfNotPresent
+          command: ["/manager"]
+          args: #args in this patch replaces the entire argument list, rather than adding individual arguments.
+            - --metrics-bind-address=:8443
+            - --leader-elect
+            - --health-probe-bind-address=:8081
+            - --webhook-cert-path=/tmp/k8s-webhook-server/serving-certs
+            - --webhook-port=9443
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi

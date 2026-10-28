@@ -22,6 +22,7 @@ import (
 	"flag"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -74,6 +75,30 @@ type ScanReport struct {
 
 func getAllScans(w http.ResponseWriter, r *http.Request) {
 	prefix := r.URL.Query().Get("imagePrefix") // Get the "imagePrefix" query parameter from the request URL
+
+	limit := 20
+	offset := 0
+
+	// Get the "limit" query parameter from the request URL
+	if value := r.URL.Query().Get("limit"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed <= 0 {
+			http.Error(w, "limit must be a positive integer", http.StatusBadRequest)
+			return
+		}
+		limit = parsed
+	}
+
+	// Get the "offset" query parameter from the request URL
+	if value := r.URL.Query().Get("offset"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 0 {
+			http.Error(w, "offset must be a non-negative integer", http.StatusBadRequest)
+			return
+		}
+		offset = parsed
+	}
+
 	entries, err := os.ReadDir("/reports")
 	if err != nil {
 		http.Error(w, "could not read scan reports", http.StatusInternalServerError)
@@ -112,6 +137,18 @@ func getAllScans(w http.ResponseWriter, r *http.Request) {
 		}
 		// Append the scan report to the reports slice, using the filename (without the .json extension) as the ScanID
 		reports = append(reports, ScanReport{ScanID: strings.TrimSuffix(entry.Name(), ".json"), Report: report})
+	}
+	// Check offset and limit to ensure they are within the bounds of the reports slice
+	if offset > len(reports) {
+		offset = len(reports)
+	}
+
+	// selects the reports slice starting from the offset index to the end of the slice
+	reports = reports[offset:]
+
+	// selects the first 'limit' elements from the reports slice
+	if len(reports) > limit {
+		reports = reports[:limit]
 	}
 
 	// Set the Content-Type header to indicate that the response contains JSON data

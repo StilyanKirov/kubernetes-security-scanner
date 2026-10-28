@@ -9,3 +9,4 @@ spec:
   podSelector:
     matchLabels:
       app: web
+  severity: MEDIUM,HIGH,CRITICAL

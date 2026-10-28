@@ -21,7 +21,8 @@ import (
 	. "github.com/onsi/gomega"
 
 	scanv1 "github.com/Stilyan-Kirov/my-operator/api/v1"
-	// TODO (user): Add any additional imports if needed
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var _ = Describe("ImageScan Webhook", func() {
@@ -45,6 +46,42 @@ var _ = Describe("ImageScan Webhook", func() {
 	})
 
 	Context("When creating or updating ImageScan under Validating Webhook", func() {
+		It("accepts a scan when a Pod matches both selectors", func() {
+			namespace := &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "imagescan-test",
+					Labels: map[string]string{"env": "production"},
+				},
+			}
+			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+			DeferCleanup(func() {
+				Expect(k8sClient.Delete(ctx, namespace)).To(Succeed())
+			})
+
+			pod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "web-test",
+					Namespace: namespace.Name,
+					Labels:    map[string]string{"app": "web"},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{{Name: "nginx", Image: "nginx:1.27"}},
+				},
+			}
+			Expect(k8sClient.Create(ctx, pod)).To(Succeed())
+			DeferCleanup(func() {
+				Expect(k8sClient.Delete(ctx, pod)).To(Succeed())
+			})
+
+			obj.Spec.NamespaceSelector.MatchLabels = map[string]string{"env": "production"}
+			obj.Spec.PodSelector.MatchLabels = map[string]string{"app": "web"}
+			validator.Reader = k8sClient
+
+			warnings, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(warnings).To(BeEmpty())
+		})
+
 		// TODO (user): Add logic for validating webhooks
 		// Example:
 		// It("Should deny creation if a required field is missing", func() {

@@ -36,6 +36,12 @@ type ImageScanSpec struct {
 	// An empty selector matches all Pods in those Namespaces.
 	// +required
 	PodSelector metav1.LabelSelector `json:"podSelector"`
+
+	// Severity is the minimum vulnerability severity to include.
+	// When omitted, all severities are included, including UNKNOWN.
+	// +kubebuilder:validation:Pattern=`^(UNKNOWN|LOW|MEDIUM|HIGH|CRITICAL)(,(UNKNOWN|LOW|MEDIUM|HIGH|CRITICAL))*$`
+	// +optional
+	Severity string `json:"severity,omitempty"`
 }
 
 // ScanPhase is the lifecycle phase of a scan.
@@ -98,13 +104,6 @@ type ImageScanStatus struct {
 	// +listMapKey=image
 	// +optional
 	Scans []ImageScanResult `json:"scans,omitempty"`
-
-	// Conditions describe the state of the request, including failures.
-	// Each condition has a unique type.
-	// +listType=map
-	// +listMapKey=type
-	// +optional
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -143,6 +142,9 @@ type ImageScanList struct {
 func init() {
 	SchemeBuilder.Register(func(s *runtime.Scheme) error {
 		s.AddKnownTypes(SchemeGroupVersion, &ImageScan{}, &ImageScanList{})
+		// Регистрира Go типовете ImageScan и ImageScanList
+		// за съответната API група и версия в runtime.Scheme.
 		return nil
 	})
+	//SchemeBuilder.Register(&ImageScan{}, &ImageScanList{})
 }

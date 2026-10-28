@@ -56,7 +56,7 @@ func SetupImageScanWebhookWithManager(mgr ctrl.Manager) error {
 // NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
 // as this struct is used only for temporary operations and does not need to be deeply copied.
 type ImageScanValidator struct {
-	// Полето Reader дава на ImageScanValidator начин да прочете Namespace и Pod при ValidateCreate.
+	// Reader is used to read Namespace and Pod resources during ValidateCreate.
 	Reader client.Reader
 }
 
@@ -68,19 +68,19 @@ func (v *ImageScanValidator) ValidateCreate(ctx context.Context, obj *scanv1.Ima
 		return nil, fmt.Errorf("ImageScan validator has no API reader")
 	}
 
-	namespaceSelector, err := metav1.LabelSelectorAsSelector(&obj.Spec.NamespaceSelector)
+	namespaceSelector, err := metav1.LabelSelectorAsSelector(&obj.Spec.NamespaceSelector) // проверка дали spec.namespaceSelector е валиден LabelSelector
 	if err != nil {
 		return nil, fmt.Errorf("invalid spec.namespaceSelector: %w", err)
 	}
 
-	podSelector, err := metav1.LabelSelectorAsSelector(&obj.Spec.PodSelector)
+	podSelector, err := metav1.LabelSelectorAsSelector(&obj.Spec.PodSelector) // проверка дали spec.podSelector е валиден LabelSelector
 	if err != nil {
 		return nil, fmt.Errorf("invalid spec.podSelector: %w", err)
 	}
 
 	namespaces := &corev1.NamespaceList{}
 	namespaceFilter := client.MatchingLabelsSelector{Selector: namespaceSelector}
-	err = v.Reader.List(ctx, namespaces, namespaceFilter)
+	err = v.Reader.List(ctx, namespaces, namespaceFilter) // създава се списък от Namespace-и, които съвпадат с namespaceSelector
 	if err != nil {
 		return nil, fmt.Errorf("could not list matching Namespaces: %w", err)
 	}
@@ -97,11 +97,13 @@ func (v *ImageScanValidator) ValidateCreate(ctx context.Context, obj *scanv1.Ima
 			return nil, fmt.Errorf("could not list Pods in Namespace %q: %w", namespace.Name, err)
 		}
 
+		// at least one Pod matches the namespaceSelector and podSelector, validation is successful
 		if len(pods.Items) > 0 {
 			return nil, nil
 		}
 	}
 
+	// No pod matches the spec.namespaceSelector and spec.podSelector, validation fails
 	return nil, fmt.Errorf(
 		"no Pod matches spec.namespaceSelector=%q and spec.podSelector=%q",
 		namespaceSelector.String(), podSelector.String(),

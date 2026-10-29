@@ -62,7 +62,7 @@ func (r *ImageScanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	scan := &scanv1.ImageScan{} // Create an empty object that Get will populate.
 	// fetches the ImageScan object identified by req.NamespacedName from the
-	// Kubernetes API and populates the empty scan object with its data. If the object is not found, it returns an error.
+	// Fetch the cluster-scoped ImageScan by name and populate scan.
 	err := r.Get(ctx, req.NamespacedName, scan)
 	// Handle a failed read before using scan.
 	if err != nil { // Indicating that the Get operation failed.

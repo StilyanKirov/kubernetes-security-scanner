@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -145,7 +146,7 @@ func (r *ImageScanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		scanNumber := 1
 		for image := range images {
 			result := scanv1.ImageScanResult{
-				ID:    fmt.Sprintf("%s-%d", scan.UID, scanNumber),
+				ID:    fmt.Sprintf("%s-%s-%d", strings.Split(image, ":")[0], scan.UID, scanNumber),
 				Image: image,
 				Phase: scanv1.ScanPhasePending,
 			}

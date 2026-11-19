@@ -76,7 +76,7 @@ type ScanReport struct {
 func getAllScans(w http.ResponseWriter, r *http.Request) {
 	prefix := r.URL.Query().Get("imagePrefix") // Get the "imagePrefix" query parameter from the request URL
 
-	limit := 20
+	limit := 50
 	offset := 0
 
 	// Get the "limit" query parameter from the request URL
@@ -132,7 +132,7 @@ func getAllScans(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			if !strings.HasPrefix(metadata.ArtifactName, prefix) {
-				continue
+				continue // Skip this report if the ArtifactName does not start with the specified prefix
 			}
 		}
 		// Append the scan report to the reports slice, using the filename (without the .json extension) as the ScanID
@@ -166,6 +166,7 @@ func scanHandler() http.Handler { //
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /scans/{id}", getScanByID)
 	mux.HandleFunc("GET /scans", getAllScans)
+	mux.HandleFunc("GET /hello")
 	return mux
 }
 
@@ -299,9 +300,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := (&controller.ImageScanReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+	if err := (&controller.ImageScanReconciler{ // creates a new instance of the ImageScanReconciler and sets it up with the manager
+		Client: mgr.GetClient(), // gets the client from the manager to interact with the Kubernetes API
+		Scheme: mgr.GetScheme(), // gets the scheme from the manager to understand the types of objects it will be working with
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "imagescan")
 		os.Exit(1)

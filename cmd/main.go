@@ -132,7 +132,8 @@ func getAllScans(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			if !strings.HasPrefix(metadata.ArtifactName, prefix) {
-				continue // Skip this report if the ArtifactName does not start with the specified prefix
+				continue
+				// Skip this report if the ArtifactName does not start with the specified prefix
 			}
 		}
 		// Append the scan report to the reports slice, using the filename (without the .json extension) as the ScanID
@@ -300,9 +301,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := (&controller.ImageScanReconciler{ // creates a new instance of the ImageScanReconciler and sets it up with the manager
-		Client: mgr.GetClient(), // gets the client from the manager to interact with the Kubernetes API
-		Scheme: mgr.GetScheme(), // gets the scheme from the manager to understand the types of objects it will be working with
+	if err := (&controller.ImageScanReconciler{
+		// creates a new instance of the ImageScanReconciler and sets it up with the manager
+		Client: mgr.GetClient(),
+		// gets the client from the manager to interact with the Kubernetes API
+		Scheme: mgr.GetScheme(),
+		// gets the scheme from the manager to understand the types of objects it will be working with
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "imagescan")
 		os.Exit(1)

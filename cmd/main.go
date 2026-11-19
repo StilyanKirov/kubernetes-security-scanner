@@ -167,7 +167,6 @@ func scanHandler() http.Handler { //
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /scans/{id}", getScanByID)
 	mux.HandleFunc("GET /scans", getAllScans)
-	mux.HandleFunc("GET /hello")
 	return mux
 }
 
